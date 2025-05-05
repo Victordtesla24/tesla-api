@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "src/index.ts", "use": "@vercel/node" },
+    { "src": "public/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    {
+      "src": "/\\.well-known/appspecific/com\\.tesla\\.3p\\.public-key\\.pem",
+      "methods": ["GET"],
+      "dest": "src/index.ts",
+      "headers": {
+        "content-type": "application/x-pem-file",
+        "cache-control": "public, max-age=0, must-revalidate",
+        "access-control-allow-origin": "*"
+      }
+    },
+    {
+      "src": "/health",
+      "methods": ["GET"],
+      "dest": "src/index.ts"
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "/public/favicon.ico"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "SERVER_TYPE": "publickey",
+    "PUBLIC_KEY_PATH": ".well-known/appspecific/com.tesla.3p.public-key.pem",
+    "WELL_KNOWN_PATH": "/.well-known/appspecific/com.tesla.3p.public-key.pem",
+    "PUBLIC_KEY_SERVER_URL": "https://public-key-server-smoky.vercel.app"
+  }
+}

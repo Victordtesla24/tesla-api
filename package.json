@@ -1,0 +1,53 @@
+{
+  "name": "tesla-api",
+  "version": "1.0.0",
+  "description": "Tesla Fleet API Integration",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "start-public-key": "SERVER_TYPE=publickey node src/index.js",
+    "start-telemetry": "SERVER_TYPE=telemetry node src/index.js",
+    "test": "jest",
+    "test:unit": "jest --testPathPattern=/test/unit/",
+    "test:regression": "jest --testPathPattern=/test/regression/ --runInBand",
+    "test:integration": "jest --testPathPattern=/test/integration/ --runInBand",
+    "register": "node registerPartner.js",
+    "verify-key": "node scripts/verify-key.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.27.1",
+    "@babel/preset-env": "^7.27.1",
+    "@babel/preset-react": "^7.27.1",
+    "@types/express": "^5.0.1",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.19",
+    "@types/ws": "^8.5.10",
+    "ajv": "^8.17.1",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "nock": "^13.5.6",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "automock": false,
+    "setupFiles": [
+      "<rootDir>/test/jest.setup.js"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/dist"
+    ]
+  }
+}

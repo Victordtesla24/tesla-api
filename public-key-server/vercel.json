@@ -1,0 +1,23 @@
+{
+    "version": 2,
+    "builds": [
+      { "src": "src/index.ts", "use": "@vercel/node" },
+      { "src": "public/**", "use": "@vercel/static" }
+    ],
+    "routes": [
+      {
+        "src": "/\\.well-known/appspecific/com\\.tesla\\.3p\\.public-key\\.pem",
+        "methods": ["GET"],
+        "dest": "src/index.ts"
+      },
+      {
+        "src": "/health",
+        "methods": ["GET"],
+        "dest": "src/index.ts"
+      },
+      {
+        "src": "/(.*)",
+        "dest": "/public/$1"
+      }
+    ]
+  }

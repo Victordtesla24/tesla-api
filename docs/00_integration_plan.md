@@ -1,0 +1,234 @@
+<!--
+Organization: Tesla Fleet API Integration Plan
+Description: Comprehensive implementation plan for integrating Tesla Fleet API into the application.
+Deployment Order: Overview of the entire project with deployment dependencies and sequence.
+References:
+  • Tesla Fleet API Documentation
+  • Tesla Virtual Keys Documentation
+  • Fleet Telemetry Service Documentation
+Note: Follow the deployment order exactly as specified to ensure proper integration.
+
+[INTEGRATION AND DEPLOYMENT PLAN]
+Project Components: Public Key Server, Fleet Telemetry Server, Front-End Dashboard
+  - Purpose: Implementation of Tesla Fleet API for real-time vehicle data visualization.
+  - Deployment: Critical order: (1) Public Key Server, (2) Fleet Telemetry Server, (3) Dashboard.
+  - Integration: Each component depends on the previous one being successfully deployed and configured.
+  - Credential Usage: Use provided credentials exactly as specified. All authentication follows Tesla's OAuth and mTLS requirements.
+
+Additional Note: All implementation details strictly follow Tesla's official documentation.
+-->
+
+<!-- ****************************************** -->
+<!-- **COMPLETE IMPLEMENTATION PLAN**          -->
+<!-- ****************************************** -->
+
+# Tesla Fleet API Integration: Implementation Plan
+
+## Project Overview  
+This project implements a system to display real-time Tesla vehicle data using Tesla's official Fleet API. It comprises three main components: **(1)** a Public Key Server to host the application's ECDSA public key for virtual-key pairing ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)); **(2)** a Fleet Telemetry Server (Node.js) that accepts secure WebSocket streams from vehicles and forwards data to authenticated dashboard clients ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=To%20configure%20a%20vehicle%2C%20confirm,the%20request%20to%20Fleet%20API)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)); and **(3)** a Front-End Dashboard (Next.js) that handles Tesla OAuth for user login and displays live vehicle data. These components must be deployed in strict order: the Public Key Server first, then the Telemetry Server, and finally the Dashboard. Each step aligns with Tesla's documentation on virtual keys, telemetry configuration, and authentication. The integration leverages mutual TLS (mTLS) and OAuth tokens, following Tesla's security model ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+
+- **Public Key Server:** Serves the application's PEM-format public key at `https://<your-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`. Tesla vehicles will fetch this during virtual-key pairing ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)).  
+- **Fleet Telemetry Server:** A Node.js service (persistent process) that accepts secure WebSockets from vehicles (with TLS client certs) and from dashboard clients (with Tesla-issued access tokens). It handles telemetry streams and relays data to dashboards ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=To%20configure%20a%20vehicle%2C%20confirm,the%20request%20to%20Fleet%20API)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)).  
+- **Dashboard (Next.js):** Authenticates users via Tesla's OAuth, then connects to the Telemetry Server (using `NEXT_PUBLIC_TELEMETRY_SERVER_URL`) to display live data.  
+
+Each component relies on environment configurations (.env variables) and TLS credentials. All key steps – hosting the public key, registering with Tesla, pairing, and configuring telemetry – are explicitly referenced to Tesla's official docs to ensure correctness. 
+
+## Architecture and Data Flow  
+The system architecture follows Tesla's recommended fleet-telemetry model ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=The%20Fleet%20Telemetry%20server%20must,examples%20of%20running%20the%20server)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=To%20configure%20a%20vehicle%2C%20confirm,the%20request%20to%20Fleet%20API)). The **Public Key Server** hosts the ECDSA public key at the required path ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). After deployment, we call Tesla's **Partner Account Register** endpoint (`POST /api/1/partner_accounts`) with a Partner Token to register our domain and public key ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=After%20the%20public%20key%20is,enroll%20this%20key%20with%20Tesla)). Once the key is registered, users can pair the virtual key in their Tesla App via the deep link `https://tesla.com/_ak/<your-domain>` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=)).  
+
+The **Fleet Telemetry Server** (running on a dedicated host supporting persistent Node.js) listens on HTTPS (port 443) with mutual TLS enabled ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). Vehicles establish a WSS connection to the server (e.g. `wss://<telemetry-domain>/vehicle`) using client certificates issued by Tesla ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). Dashboards connect to `wss://<telemetry-domain>/dashboard?token=XYZ` using a Tesla OAuth access token for authentication; the server verifies these tokens before sending data ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=To%20configure%20a%20vehicle%2C%20confirm,the%20request%20to%20Fleet%20API)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). Upon startup, the Telemetry Server uses a Partner OAuth token (via `client_credentials`) to call `POST /api/1/vehicles/fleet_telemetry_config` for each vehicle ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=Once%20all%20pre,party%20applications%20at%20a)). The configuration payload includes the server's hostname, port, and **full TLS certificate chain** (`ca` field) so the vehicle will trust the server's identity ([02_telemetry_server.md](file://file-BV9pzQuFrQt2zXn8Ukp4Wu#:~:text=,with%20requestCert%3A%20true%20and%20verify)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)). Tesla's Vehicle Command Proxy is used to sign this request with the application's private key, per Tesla's docs ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=After%20the%20public%20key%20is,enroll%20this%20key%20with%20Tesla)). Once configured, vehicles will stream protobuf telemetry continuously to the server. The Telemetry Server parses these messages, acknowledges receipt back to the vehicle, and broadcasts the data as JSON to all connected dashboard clients. 
+
+This design aligns with Tesla's official example and requirements: the Fleet Telemetry server must be internet-accessible ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=The%20Fleet%20Telemetry%20server%20must,examples%20of%20running%20the%20server)) and handle both vehicle and client WebSockets (no need to split services) ([02_telemetry_server.md](file://file-BV9pzQuFrQt2zXn8Ukp4Wu#:~:text=1.1.%20,any%20dashboard%20clients%3B%20Tesla%20does)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). Vehicles authenticate with TLS client certificates ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)), and the dashboard clients authenticate via Tesla OAuth tokens ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)). 
+
+## Deployment Order and Dependencies  
+Per Tesla's Fleet API rules, **the deployment order is critical**: 
+
+1. **Public Key Server (Deploy First):**  
+   - **Purpose:** Serve the PEM public key at `/.well-known/appspecific/com.tesla.3p.public-key.pem`.  
+   - **Requirements:** Use the provided `prime256v1` ECDSA key pair (Tesla supports only P-256) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=openssl%20ec%20,key.pem)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)).  Host it on HTTPS (valid TLS certificate). The domain must be registered as an allowed origin in Tesla's developer portal and must remain consistent.  
+   - **Post-Deployment:** Immediately call the Partner Accounts **Register** endpoint (`POST /api/1/partner_accounts`) with a **Partner Token**. The request body should include our domain, and the HTTP `Authorization` header must contain a Partner OAuth token (retrieved via the client_credentials flow) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)). Tesla requires the public key to be already accessible at the `.well-known` path when registering ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). Successful registration links our key to the application, enabling vehicle pairing.  
+
+2. **Vehicle Key Pairing:**  
+   - After partner registration, instruct users to pair the virtual key in their Tesla app using the deep link `https://tesla.com/_ak/<your-domain>` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=)). This step requires the user to have already authorized our OAuth scopes (`vehicle_device_data`, `vehicle_cmds`, `vehicle_location`) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)). If the user sees an "application not registered" error, it indicates the partner registration step was missed or our key is inaccessible ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=,became%20a%20requirement%20%2012)) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=After%20the%20public%20key%20is,enroll%20this%20key%20with%20Tesla)). 
+
+3. **Fleet Telemetry Server (Deploy Second):**  
+   - **Purpose:** Start the Node.js telemetry server on a host that supports persistent connections (e.g. Fly.io, Railway, AWS EC2). Vercel and other serverless platforms are not suitable for mTLS WebSockets.  
+   - **Requirements:** Configure HTTPS with mTLS (`requestCert: true`) and present a certificate chain trusted by Tesla's vehicles ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). After deploying, verify the server's WSS endpoints are reachable.  
+   - **Post-Deployment:** Once deployed, use Tesla's Vehicle Command Proxy or equivalent to send `POST /api/1/vehicles/fleet_telemetry_config`. This configures each paired vehicle to stream telemetry to our server ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=Once%20all%20pre,party%20applications%20at%20a)). The payload must include `hostname`, `port`, and the full TLS certificate chain in the `ca` field (so the vehicle trusts our cert) ([02_telemetry_server.md](file://file-BV9pzQuFrQt2zXn8Ukp4Wu#:~:text=,with%20requestCert%3A%20true%20and%20verify)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)). 
+
+4. **Front-End Dashboard (Deploy Third):**  
+   - **Purpose:** After key and telemetry servers are live, deploy the Next.js dashboard. It relies on the public key being registered and vehicles being configured for telemetry. The dashboard initiates the OAuth flow, then connects to the telemetry server via WebSockets at `NEXT_PUBLIC_TELEMETRY_SERVER_URL`.  
+
+In summary, **deploy the Public Key Server first (and register the domain/key)**, then the **Telemetry Server**, then the **Dashboard**. Each must be validated before proceeding: the `.well-known` endpoint must serve the correct key and partner registration must succeed ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)), and the telemetry server's HTTPS endpoint must accept client TLS certs ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). 
+
+## Public Key Server Details  
+- **Key Pair:** Use the Tesla-provided `prime256v1` key pair. The **private key** stays on your server (never served publicly) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=This%20public%20key%20must%20remain,available%20at)). Generate them with OpenSSL if needed (Tesla docs example uses `openssl ecparam -name prime256v1 ...` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=To%20create%20a%20private%20key%2C,run))).  
+- **Hosting:** Serve the **public key PEM** file at exactly `https://<public-key-server-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). This must be accessible over HTTPS. For example, using Node/Express, mount a static file route at that path. Tesla will fetch it to pair the key.  
+- **Environment & Config:**  
+  - `PUBLIC_KEY_PATH`: filesystem path to `public-key.pem` (production PEM).  
+  - `WELL_KNOWN_PATH`: the URL path `/.well-known/appspecific/com.tesla.3p.public-key.pem`.  
+  - `TESLA_PARTNER_TOKEN`: (if using in code) the Partner OAuth token for registering.  
+- **Tesla Requirements:** The public key **must** be an EC key on curve prime256v1 ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=openssl%20ec%20,key.pem)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). It must remain at the exact well-known path; do not alter the filename or path. Tesla's Partner Registration endpoint expects the key to be hosted there ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). Tesla's docs state: *"A PEM-encoded EC public key using the secp256r1 curve (prime256v1) must be hosted at https://<app domain>/.well-known/appspecific/com.tesla.3p.public-key.pem."* ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)).  
+- **Partner Registration:** Once the key is live, call `POST /api/1/partner_accounts` with JSON body `{"domain":"<your-domain>"}` and `Authorization: Bearer <PartnerToken>` ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). A successful 200 response means Tesla has registered our key. Afterwards, users can pair the virtual key in their vehicle.  
+- **Validation:** Confirm the key is correct by fetching `GET /api/1/partner_accounts/public_key?domain=<your-domain>` (requires Partner Token) which should return the same PEM. Also verify that `POST /api/1/vehicles/fleet_status` for any VIN shows `commands=on` under `discounted_device_data` for our partner, indicating the key is present ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_status)).  
+
+## Fleet Telemetry Server (Node.js)  
+
+The Fleet Telemetry Server is a Node.js service (e.g. running on port 443) that implements Tesla's fleet-telemetry architecture ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=To%20configure%20a%20vehicle%2C%20confirm,the%20request%20to%20Fleet%20API)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). It must enforce HTTPS with **mutual TLS (mTLS)**. Vehicles will connect with client certificates; the server must use `requestCert: true` and reject unauthorized clients. Tesla's design (fleet-telemetry reference) explicitly states: *"Vehicles authenticate to the telemetry server with TLS client certificates"* ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). In practice, this means: load your server TLS **private key**, **certificate**, and the **CA certificate** that signed Tesla's vehicle certificates, then start an HTTPS server with `ca: <caCert>, requestCert: true, rejectUnauthorized: true`.  
+
+**Telemetry WebSockets:**  
+- **/vehicle path:** Vehicles connect here. Each vehicle will open a WebSocket to `wss://<telemetry-host>/vehicle` and continuously send protobuf-encoded telemetry messages. The server code must parse each message (Tesla's data frames) and immediately send back an acknowledgement JSON (`{"ack":true}`) to the vehicle ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=try%20,return%3B)). Invalid messages should be rejected with an error ACK. The parsed telemetry object is then broadcast to all authorized dashboard clients.  
+- **/dashboard path:** Dashboard clients (our front-end) connect here with a query string token, e.g. `wss://<telemetry-host>/dashboard?token=XYZ`. The server must verify the token (e.g. check it against a shared secret or JWT); if invalid, immediately close the connection ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=wss.on%28%27connection%27%2C%20%28ws%2C%20req%29%20%3D,req.headers.host%7D%60%29%3B%20const%20token%20%3D%20url.searchParams.get%28%27token)). On successful auth, the client receives live telemetry JSON messages forwarded from vehicles.  
+
+**TLS Certificate Chain:** When configuring vehicles for telemetry, Tesla requires the server's full certificate chain be provided so the vehicle trusts the endpoint ([02_telemetry_server.md](file://file-BV9pzQuFrQt2zXn8Ukp4Wu#:~:text=,with%20requestCert%3A%20true%20and%20verify)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)). In our `POST /fleet_telemetry_config` payload, we include `"ca": "<contents of server.crt>"`, which should contain the full PEM chain (server cert followed by intermediate CA, if any) ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=%2F%2F%20Load%20the%20server%20certificate,throw%20err%3B)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)). This ensures the vehicle can verify our server when it connects.  
+
+**Configuration (POST fleet_telemetry_config):**  
+Upon startup (and whenever vehicles need (re)configuration), the server obtains a Partner OAuth token via client_credentials ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=%2F%2F%20Load%20the%20server%20certificate,throw%20err%3B)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)), then calls:
+```
+POST https://<region-fleet-api>/api/1/vehicles/fleet_telemetry_config
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "vins": [ "<VIN1>", "<VIN2>", ... ],
+  "config": {
+    "hostname": "<telemetry-host-domain>",
+    "port": 443,
+    "ca": "<full_tls_chain_pem>",
+    "fields": { ... }    // telemetry fields and intervals
+  }
+}
+```
+This instructs the vehicle(s) to stream data to our server ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=Once%20all%20pre,party%20applications%20at%20a)). The `fields` JSON lists which telemetry fields and at what intervals (e.g. `VehicleSpeed`, `Location`, etc.); Tesla's example includes fields like `VehicleSpeed`, `Soc`, `Location`, etc ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=%2F%2F%20Build%20the%20configuration%20payload,)). Tesla's docs note the server must sign this request (via the Vehicle Command Proxy) using the app's private key ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)). 
+
+**Prerequisites & Behavior:** According to Tesla's Fleet Telemetry docs, before configuring, vehicles must meet prerequisites: not be pre-2021 Model S/X, running firmware ≥2024.26, and the vehicle must have our virtual key already paired ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=For%20a%20vehicle%20to%20be,few%20conditions%20must%20be%20met)). Once configured, a vehicle can stream to up to **five** third-party servers ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=Once%20all%20pre,party%20applications%20at%20a)). If any VIN is missing the key, the fleet-telemetry call will skip it with `missing_key` ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=If%20any%20specified%20VINs%20are,rejected%20for%20a%20few%20reasons)). Telemetry stops if the user revokes vehicle access or our app's authorization scope ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=,%60unsupported_firmware)). 
+
+**Authentication:** The Telemetry Server uses a Tesla-issued **Partner Token** to configure vehicles and may also use Tesla's user OAuth token to validate dashboard clients (as appropriate). Tesla's recommended scopes for telemetry are `vehicle_device_data`, `vehicle_cmds`, and `vehicle_location` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)). The server must validate that incoming data requests come from a client who has the proper scopes. 
+
+## Project Structure & Dependencies  
+The Node.js Telemetry Server can be organized as follows: 
+
+```
+├── index.js           # Main entry: loads TLS certs, starts HTTPS server with mTLS, calls configureVehicles()
+├── config.js          # Loads .env and exports configuration (PORT, TLS paths, Tesla credentials, VINs, etc.)
+├── teslaApi.js        # Handles Partner token fetch and calls /fleet_telemetry_config ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=%2F%2F%20Load%20the%20server%20certificate,throw%20err%3B)) ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=1.3.%20,to%20mock%20this%20endpoint))
+├── vehicleServer.js   # WebSocket handler on /vehicle: reads vehicle messages, sends ACK, invokes onTelemetry callback ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=try%20,return%3B))
+├── dashboardServer.js # WebSocket handler on /dashboard: checks token, accepts or closes connection ([03_nodejs_server_requirements.md](file://file-PHUo7FbitcEiQh3bgwztPs#:~:text=wss.on%28%27connection%27%2C%20%28ws%2C%20req%29%20%3D,req.headers.host%7D%60%29%3B%20const%20token%20%3D%20url.searchParams.get%28%27token))
+├── auth.js            # (Optional) Verifies dashboard tokens (static or JWT-based)
+└── certs/             # Directory for TLS certs/keys: server.key, server.crt, ca.crt
+```
+
+- **Dependencies:** The server uses Node.js (v16+). Key packages include [`ws`](https://www.npmjs.com/package/ws) for WebSockets, [`axios`](https://www.npmjs.com/package/axios) for HTTP requests to Tesla's API, [`dotenv`](https://www.npmjs.com/package/dotenv) for loading `.env`, and optionally [`jsonwebtoken`](https://www.npmjs.com/package/jsonwebtoken) or similar for verifying JWT tokens. All network calls and parsers follow Tesla's protocols (TLS, JSON, protobuf as needed). 
+
+- **Environment Variables (.env):** Key variables include the server port/host, TLS file paths, and Tesla credentials. For example:  
+  - `PORT` (default 443) and `TELEMETRY_HOST` (the public DNS for this service).  
+  - `TLS_KEY_PATH`, `TLS_CERT_PATH`, `TLS_CA_PATH` pointing to the server's private key, certificate, and the CA bundle (to verify Tesla certificates).  
+  - Tesla OAuth credentials: `TESLA_CLIENT_ID`, `TESLA_CLIENT_SECRET`, `TESLA_AUDIENCE` (base URL of the Fleet API, e.g. `https://fleet-api.prd.na.vn.cloud.tesla.com`), and `TESLA_AUTH_URL` (e.g. `https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3`). These satisfy Tesla's partner-token flow ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `VEHICLE_IDS` (comma-separated VINs to configure).  
+  - `DASHBOARD_TOKEN` (a secret token or JWT signing key for validating dashboard WebSocket clients).  
+  - `TELEMETRY_FIELDS` (JSON string specifying telemetry data and intervals).  
+These env variables ensure the server can authenticate with Tesla and provide the correct endpoints to vehicles. Tesla's documentation implies many of these (client credentials, base URLs, scopes) must be correctly set ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)).
+
+## Deployment and Validation Steps  
+1. **Deploy Public Key Server:** Ensure the public key PEM is served at the exact path and HTTPS URL. In code, fail fast if `PUBLIC_KEY_PATH` is missing or cannot be served. After deployment, immediately call Tesla's partner registration: 
+   ```bash
+   curl -X POST https://<region-fleet-api>/api/1/partner_accounts \
+     -H "Authorization: Bearer $PARTNER_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"domain":"<your-domain>"}'
+   ```
+   A successful response confirms registration ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)). Verify by fetching 
+   `GET /api/1/partner_accounts/public_key?domain=<your-domain>`; it should return our PEM. Also, `POST /api/1/vehicles/fleet_status` for a vehicle VIN can confirm `discounted_device_data.commands` is `true`, indicating our key is recognized ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_status)).
+
+2. **Vehicle Pairing:** Have a test Tesla vehicle pair the key via the mobile app using the link `https://tesla.com/_ak/<your-domain>` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)). Check Tesla's Telemetry FAQ: if "not registered" error appears, registration or key hosting is incorrect ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=,became%20a%20requirement%20%2012)).
+
+3. **Deploy Telemetry Server:** Install the Node.js server on a host with a valid TLS certificate. Load `server.key`, `server.crt`, and `ca.crt` from `certs/`. Start the HTTPS server with `requestCert: true, rejectUnauthorized: true`. Confirm via an external check (e.g. `openssl s_client -connect <host>:443 -CAfile ca.crt`) that the server presents the correct chain. 
+
+4. **Configure Telemetry:** After the telemetry server is up, run a configuration command (using Tesla's vehicle proxy or API) to instruct the vehicle to stream to our server. For example:
+   ```bash
+   tesla-vehicle-proxy config-telemetry \
+     --vin <VIN> \
+     --hostname <telemetry-host> \
+     --port 443 \
+     --ca-cert server.crt \
+     --intervals '{"VehicleSpeed":10,"Location":10,"Soc":60}'
+   ```
+   Alternatively, use `curl` with the previously obtained Partner token:
+   ```bash
+   curl -X POST https://<fleet-api>/api/1/vehicles/fleet_telemetry_config \
+     -H "Authorization: Bearer $PARTNER_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "vins": ["<VIN>"],
+       "config": {
+         "hostname":"<telemetry-host>",
+         "port":443,
+         "ca":"<full_tls_chain_pem>",
+         "fields": {"VehicleSpeed":{"interval_seconds":10}, ...}
+       }
+     }'
+   ```
+   This must succeed (HTTP 200). The vehicle should then connect and begin streaming. You can confirm by calling `GET /api/1/vehicles/<VIN>/fleet_telemetry_config`; the `synced` field should become `true` ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=fleet_telemetry_config%20get)). 
+
+5. **Dashboard Deployment:** Finally, deploy the front-end. Ensure it has `NEXT_PUBLIC_TELEMETRY_SERVER_URL` pointing to `wss://<telemetry-host>/dashboard`. The user login and OAuth flow can now operate normally, and the dashboard should start receiving telemetry JSON over the WebSocket connection.
+
+Throughout, monitor Tesla's partner telemetry endpoints for errors (e.g. `GET /api/1/partner_accounts/fleet_telemetry_errors`) to catch misconfiguration. All stages must comply with Tesla's requirements: correct key format and hosting ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)), valid scopes for tokens ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)), and fully-signed telemetry configs ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)).  
+
+## Credentials and Environment Setup  
+All secrets and credentials are managed via environment variables or secure stores. Key expected variables include:
+
+- **For Virtual Key and Partner Registration:**  
+  - `TESLA_PARTNER_TOKEN`: The Partner OAuth token (Client Credentials flow) used for `/partner_accounts` and fleet-config calls ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `TESLA_PRIVATE_KEY`: The application's private key (secp256r1) used by the Vehicle Command Proxy to sign telemetry configuration requests ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)).  
+  - `TESLA_PUBLIC_KEY`: (Optional) The public key string. Used by client code if needed.  
+
+- **For Telemetry Server:**  
+  - `PORT`: (default 443) The HTTPS port for telemetry.  
+  - `TELEMETRY_HOST`: Domain name of the telemetry server (must match the certificate's SAN).  
+  - `TLS_KEY_PATH`, `TLS_CERT_PATH`, `TLS_CA_PATH`: File paths to the server's private key, certificate, and CA bundle. These create an mTLS endpoint.  
+  - `TESLA_CLIENT_ID`, `TESLA_CLIENT_SECRET`: OAuth2 credentials from the Tesla dev portal (for partner token) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `TESLA_AUDIENCE`: The Fleet API base URL for our region (e.g. `https://fleet-api.prd.na.vn.cloud.tesla.com`) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `TESLA_AUTH_URL`: The OAuth issuer URL (e.g. `https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3`) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `VEHICLE_IDS`: Comma-separated VIN(s) to configure for telemetry.  
+  - `DASHBOARD_TOKEN`: A shared token or JWT secret for authorizing dashboard WebSocket clients.  
+  - `TELEMETRY_FIELDS`: JSON string of desired telemetry fields and intervals (or use defaults).  
+
+- **For Front-End (Next.js):**  
+  - `TESLA_CLIENT_ID`, `TESLA_CLIENT_SECRET`: For OAuth (same as above or separate Third-Party OAuth creds).  
+  - `TESLA_REDIRECT_URI`, `TESLA_OAUTH_SCOPES`: For the OAuth flow. Scopes must include at least `openid offline_access user_data vehicle_device_data vehicle_cmds vehicle_location` ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)).  
+  - `NEXT_PUBLIC_TELEMETRY_SERVER_URL`: e.g. `wss://<telemetry-host>` for client code.  
+  - `NEXTAUTH_URL`, `NEXTAUTH_SECRET`: For NextAuth if used.  
+
+These variables ensure compliance with Tesla's documented authentication and endpoints. For example, the Partner Tokens doc specifies exactly that `grant_type=client_credentials`, along with `client_id`, `client_secret`, and `audience` ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)). The Telemetry Config endpoint expects the `vins` and `config` JSON fields exactly as shown ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)).  
+
+## Test Plan (CLI and Automated)  
+A comprehensive testing strategy ensures each component meets Tesla's specs before production. This includes both manual CLI tests (using scripts or `curl`) and automated tests (unit/integration).
+
+- **CLI/Script Tests:**  
+  
+  - **Public Key Endpoint:** Use `curl https://<public-key-server>/.well-known/appspecific/com.tesla.3p.public-key.pem` to verify the correct PEM is returned. Compare it to the known public key. ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key))  
+  
+  - **Partner Registration:** Run a shell script (e.g. `register_partner.sh`) that does `curl -X POST /partner_accounts` with the Partner token. Expect HTTP 200 and the domain in the response. Then `curl /partner_accounts/public_key?domain=...` to confirm registration ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)).  
+  
+  - **Virtual Key Pairing:** Simulate the pairing flow (or use a test vehicle in a staging environment) by accessing the `_ak` deep link. Check that Tesla's service accepts the pairing (no error about "not registered" or "missing key") ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=1,link%20with%20the%20Application%27s%20domain)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=,became%20a%20requirement%20%2012)).  
+  
+  - **Telemetry Server mTLS:** Use `openssl s_client` or a small client to attempt a TLS connection to `telemetry-host:443` **without** a client cert. It should fail (as per Tesla's requirement of mTLS ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private))). Then connect **with** a valid Tesla-issued client certificate (from a test vehicle or Tesla's CA) and ensure the handshake succeeds.  
+  
+  - **WebSocket Paths:** Use a WebSocket client (e.g. `wscat` or Node's `ws`) to connect to `wss://<telemetry-host>/vehicle` using TLS. Send a sample protobuf message and expect an ACK JSON. Similarly, connect to `/dashboard` with and without the token to verify access control.  
+  
+  - **Configure Vehicles:** Run a script (e.g. `configure_telemetry.sh`) that calls `POST /vehicles/fleet_telemetry_config` (through the proxy or directly). Use `curl` with the cached token to send a sample config. Expect success (HTTP 200). Try invalid cases (missing key, wrong JSON) and verify Tesla returns errors (e.g. 422). This confirms error handling conforms to Tesla's rules ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=If%20any%20specified%20VINs%20are,rejected%20for%20a%20few%20reasons)).  
+
+- **Automated Unit Tests:**  
+  - Test the **config loader** to ensure missing env variables cause immediate failures ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=1.1.%20,telemetry%23%3A~%3Atext%3D%2Cthat%2520a%2520vehicle%2527s%2520TLS%2520private)). For example, if `TESLA_CLIENT_ID` is unset, the module should throw an error. If all required vars are present, the config object should have correct types (e.g. `port` as number).  
+  - Test **auth.js** (or middleware) to verify it rejects bad dashboard tokens and accepts valid ones. For JWT tokens, sign and verify with a test secret.  
+  - Test **teslaApi.js** using HTTP mocking (e.g. [nock](https://www.npmjs.com/package/nock)): simulate Tesla's `/oauth2/v3/token` and `/fleet_telemetry_config` endpoints. Verify `getPartnerToken()` sends `grant_type=client_credentials` with correct params ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)), and that `configureVehicles()` handles both success and error responses appropriately ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=1.3.%20,to%20mock%20this%20endpoint)).  
+
+- **Automated Integration Tests:**  
+  - **End-to-End Telemetry Flow:** Spin up the Telemetry Server in a test environment (with self-signed certs trusted by the test vehicle client). Use a test Tesla client (or a mocked WebSocket client that emulates a vehicle) to connect to `/vehicle`, send a sample telemetry message, and verify it gets forwarded to a connected dashboard client. This tests the full path described by Tesla: *"Vehicles will stream data via WebSocket to the server; the server should forward data to all connected dashboards."* ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=2.1.%20%2A%2AEnd,telemetry%23%3A~%3Atext%3D%2Cthat%2520a%2520vehicle%2527s%2520TLS%2520private%29%29%20%28%5BGitHub)) ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=client,result%20in%20an%20error%20message%2Fclose)).  
+  - **API Endpoint Testing:** Use a testing tool (e.g. [supertest](https://www.npmjs.com/package/supertest) or custom scripts) to hit any HTTP endpoints you expose (if any). For example, if you expose `/configure` or `/status`, mock Tesla's API with nock: simulate a successful partner token response and a success from `/fleet_telemetry_config`, then assert your endpoint returns HTTP 200. Also test failure paths (nock 500 or 422) to ensure your code surfaces those errors properly. This follows Tesla's documented expectations for error codes on config calls ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=,%60unsupported_firmware)) ([04_nodejs_test_suite.md](file://file-Q2UKsGyE4o2tbXzEV1Czgh#:~:text=1.3.%20,to%20mock%20this%20endpoint)).  
+
+Each test should reference Tesla's documentation for expected behavior. For instance, a test should confirm that after calling `fleet_telemetry_config`, a vehicle's configuration `synced` field turns `true` as per Tesla's docs ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=fleet_telemetry_config%20get)). All failures (missing cert, bad key, revoked scopes, etc.) should align with the errors described in Tesla's spec (e.g. `missing_key`, `unsupported_firmware` ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=If%20any%20specified%20VINs%20are,rejected%20for%20a%20few%20reasons))). 
+
+By combining CLI scripts and automated tests (unit and integration), we ensure the implementation is robust and fully compliant with Tesla's official Fleet API and Telemetry specifications. The test suite should be considered complete only when every critical requirement (as documented by Tesla) is verified. 
+
+**References:** All implementation details above strictly follow Tesla's Fleet API and Telemetry documentation (e.g. Virtual Keys guide, Partner Endpoints, Fleet Telemetry guide) ([Developer Guide | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/virtual-keys/developer-guide#:~:text=Hosting%20the%20Public%20Key)) ([Partner Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#:~:text=,pairing%20process)) ([Vehicle Endpoints | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#:~:text=POST%20%2Fapi%2F1%2Fvehicles%2Ffleet_telemetry_config)) ([Overview | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/fleet-telemetry#:~:text=Once%20all%20pre,party%20applications%20at%20a)) ([Partner Tokens | Tesla Fleet API](https://developer.tesla.com/docs/fleet-api/authentication/partner-tokens#:~:text=Name%20Required%20Example%20Description%20grant_type,delimited%20list%20of%20%207)) ([GitHub - teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry#:~:text=,that%20a%20vehicle%27s%20TLS%20private)). These sources govern key format, endpoint usage, TLS/mTLS requirements, and data flow. The solution aligns with Tesla's official examples and constraints at every step.

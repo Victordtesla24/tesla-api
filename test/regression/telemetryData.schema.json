@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tesla Telemetry Data Frame",
+  "description": "Schema for validating the structure of telemetry data broadcasted to dashboard clients.",
+  "type": "object",
+  "properties": {
+    "messageType": {
+      "description": "Should always be 'data' for telemetry frames.",
+      "type": "string",
+      "const": "data"
+    },
+    "messageId": {
+      "description": "Unique identifier for the message batch from Tesla.",
+      "type": "string",
+      "minLength": 1
+    },
+    "vin": {
+        "description": "Vehicle Identification Number",
+        "type": "string",
+        "pattern": "^[A-HJ-NPR-Z0-9]{17}$"
+    },
+    "source": {
+        "description": "Origin of the data (e.g., 'vehicle')",
+        "type": "string"
+    },
+    "payload": {
+      "description": "Contains the actual telemetry data points.",
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "description": "Unix timestamp (milliseconds) of the data point collection.",
+          "type": "integer",
+          "minimum": 1609459200000
+        },
+        "authenticatedTransmission": {
+          "description": "Indicates if the transmission was authenticated",
+          "type": "boolean"
+        },
+        "signalQuality": {
+          "description": "Quality of the telemetry signal (0-100)",
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "VehicleSpeed": {
+          "description": "Vehicle speed in preferred units (e.g., km/h or mph).",
+          "type": ["number", "null"]
+        },
+        "Location": {
+          "description": "GPS coordinates.",
+          "type": ["object", "null"],
+          "properties": {
+            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+            "heading": { "type": ["integer", "null"], "minimum": 0, "maximum": 359 },
+            "altitude": { "type": ["integer", "null"] }
+          },
+          "required": ["latitude", "longitude"]
+        },
+        "Soc": {
+          "description": "State of Charge (battery percentage).",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "Power": {
+            "description": "Vehicle power draw/regen in kW.",
+            "type": ["number", "null"]
+        },
+        "PowerState": {
+          "description": "Vehicle power state (e.g., 'driving', 'standby', 'charging').",
+          "type": ["string", "null"]
+        },
+        "ShiftState": {
+          "description": "Current gear selection (P, R, N, D).",
+          "type": ["string", "null"],
+          "enum": [null, "P", "R", "N", "D"]
+        }
+      },
+      "required": [
+        "timestamp"
+      ]
+    }
+  },
+  "required": [
+    "messageType",
+    "messageId",
+    "payload"
+  ]
+} 
